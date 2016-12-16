@@ -22,6 +22,8 @@ import org.apache.spark.ml.tuning.CrossValidator;
 import org.apache.spark.ml.evaluation.MulticlassClassificationEvaluator;  
 import org.apache.spark.mllib.util.MLUtils;
 
+import static org.apache.spark.sql.functions.col;
+
 
 import org.apache.spark.sql.Row;
 import org.apache.spark.sql.Dataset;  
@@ -31,11 +33,15 @@ import org.apache.spark.sql.SQLContext;
 import org.apache.spark.SparkConf;
 import org.apache.spark.api.java.JavaSparkContext;
 
+import org.apache.spark.ml.classification.LogisticRegression;
+import org.apache.spark.ml.feature.HashingTF;
+
 
 public class Amazon {
 	public static void main(String[] args) {
 		SparkConf conf = new SparkConf().setAppName("Simple Application");
 	    JavaSparkContext sc = new JavaSparkContext(conf);
+	    sc.setLogLevel("ERROR");
 	    SQLContext sqlContext = new SQLContext(sc);
 	    
 		String reviews = "/home/la/Amazon_Instant_Video_5.json";
@@ -46,13 +52,13 @@ public class Amazon {
 		String query = new StringBuilder()
 				.append("SELECT text, label, rowNumber FROM (SELECT ")
 				.append("reviews.overall AS label ,reviews.reviewText AS text ,row_number() OVER (PARTITION BY overall ORDER BY rand()) AS rowNumber")
-				.append(" FROM reviews) reviews WHERE rowNumber <= 1000")
+				.append(" FROM reviews) reviews WHERE rowNumber <= 10000")
 				.toString();
 		
 		Dataset<Row> reviewsDF = sqlContext.sql(query);
 		reviewsDF.persist(org.apache.spark.storage.StorageLevel.MEMORY_AND_DISK());
 		
-		reviewsDF.groupBy("label").count().orderBy("label").show();
+		// reviewsDF.groupBy("label").count().orderBy("label").show();
 		
 		Tokenizer tokenizer = new Tokenizer()
 		  .setInputCol("text")
@@ -66,20 +72,37 @@ public class Amazon {
 		  .setInputCol(remover.getOutputCol())
 		  .setN(3);
 		  
-		Pipeline pipeline = new Pipeline()
-      .setStages(new PipelineStage[] {tokenizer, remover, ngram3});
+		HashingTF hashingTF = new HashingTF()
+      .setNumFeatures(100)
+      .setInputCol(ngram3.getOutputCol())
+      .setOutputCol("features");
+      
+    //Dataset<Row> tokenized = hashingTF.transform(reviewsDF);
+    //tokenized.select("features").show(false);
+      
+    LogisticRegression lr = new LogisticRegression()
+      .setMaxIter(10)
+      .setRegParam(0.01);
+      
+    NaiveBayes nb = new NaiveBayes();
 		  
-    Dataset<Row> training = reviewsDF.filter(reviewsDF("rowNumber") <= 15000).select("text","label"); 
-    Dataset<Row> test = reviewsDF.filter(reviewsDF("rowNumber") > 15000).select("text","label");
+		Pipeline pipeline = new Pipeline()
+      .setStages(new PipelineStage[] {tokenizer, remover, ngram3, hashingTF, nb});
+		  
+    Dataset<Row> training = reviewsDF.filter(col("rowNumber").lt(1000)); 
+    Dataset<Row> test = reviewsDF.filter(col("rowNumber").gt(1000));
 
     
     PipelineModel model = pipeline.fit(training);
     
-    Dataset<Row> predictions = model.transform(test);
-    for (Row r : predictions.select("id", "text", "probability", "prediction").collectAsList()) {
-      System.out.println("(" + r.get(0) + ", " + r.get(1) + ") --> prob=" + r.get(2)
-        + ", prediction=" + r.get(3));
-    }
+    /* Dataset<Row> predictions = model.transform(test);
+    for (Row r : predictions.select("probability", "prediction").collectAsList()) {
+      System.out.println("prob=" + r.get(0) + ", prediction=" + r.get(1));
+    } */
+    
+    System.out.println("---------------------------------------------------");
+    System.out.println("Training data: " + training.count());
+    System.out.println("Test data: " + test.count());
     
 	}
 }
