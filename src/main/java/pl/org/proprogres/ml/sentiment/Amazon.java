@@ -44,7 +44,7 @@ public class Amazon {
 	    sc.setLogLevel("ERROR");
 	    SQLContext sqlContext = new SQLContext(sc);
 	    
-		String reviews = "/home/la/Amazon_Instant_Video_5.json";
+		String reviews = "/home/la/Downloads/Amazon_Instant_Video_5.json";
 		
 		Dataset<Row> reviewsDs = sqlContext.read().json(reviews);
 		reviewsDs.registerTempTable("reviews");
@@ -52,14 +52,29 @@ public class Amazon {
 		String query = new StringBuilder()
 				.append("SELECT text, label, rowNumber FROM (SELECT ")
 				.append("reviews.overall AS label ,reviews.reviewText AS text ,row_number() OVER (PARTITION BY overall ORDER BY rand()) AS rowNumber")
-				.append(" FROM reviews) reviews WHERE rowNumber <= 10000")
+				.append(" FROM reviews) reviews WHERE rowNumber <= 1700")
 				.toString();
 		
 		Dataset<Row> reviewsDF = sqlContext.sql(query);
 		reviewsDF.persist(org.apache.spark.storage.StorageLevel.MEMORY_AND_DISK());
 		
-		// reviewsDF.groupBy("label").count().orderBy("label").show();
+		reviewsDF.groupBy("label").count().orderBy("label").show();
 		
+		Tokenizer tokenizer = new Tokenizer()
+				  .setInputCol("text")
+				  .setOutputCol("words");
+		
+		Dataset<Row> tokenizedDF = tokenizer.transform(reviewsDF);
+		// tokenizedDF.show();
+		
+		StopWordsRemover remover = new StopWordsRemover()
+				  .setInputCol(tokenizer.getOutputCol())
+				  .setOutputCol("filtered");
+		
+		Dataset<Row> stopwordsRemovedDF = remover.transform(tokenizedDF);
+		stopwordsRemovedDF.show();
+		
+		/* 
 		Tokenizer tokenizer = new Tokenizer()
 		  .setInputCol("text")
 		  .setOutputCol("words");
@@ -93,16 +108,16 @@ public class Amazon {
     Dataset<Row> test = reviewsDF.filter(col("rowNumber").gt(1000));
 
     
-    PipelineModel model = pipeline.fit(training);
+    PipelineModel model = pipeline.fit(training);*/
     
     /* Dataset<Row> predictions = model.transform(test);
     for (Row r : predictions.select("probability", "prediction").collectAsList()) {
       System.out.println("prob=" + r.get(0) + ", prediction=" + r.get(1));
     } */
     
-    System.out.println("---------------------------------------------------");
-    System.out.println("Training data: " + training.count());
-    System.out.println("Test data: " + test.count());
+    //System.out.println("---------------------------------------------------");
+    //System.out.println("Training data: " + training.count());
+    //System.out.println("Test data: " + test.count());
     
 	}
 }
