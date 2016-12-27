@@ -35,6 +35,12 @@
         <artifactId>stanford-corenlp</artifactId>
         <version>3.6.0</version>
     </dependency>
+    <!-- https://mvnrepository.com/artifact/master/spark-stemming -->
+    <dependency>
+        <groupId>master</groupId>
+        <artifactId>spark-stemming</artifactId>
+        <version>0.1.1</version>
+    </dependency>
   </dependencies>
   <build>
       <plugins>
